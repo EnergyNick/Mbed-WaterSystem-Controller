@@ -24,15 +24,16 @@
 BufferedSerial RsConnector(PD_5, PD_6, 9600);
 const auto bufferSize = sizeof(InputResult);
 
+AnalogOut RelayConnector(PC_0);
+
 
 // =====================================
 // Leds Logic
 
-DigitalOut WebLed(LED1);
+DigitalOut RelayLed(LED1);
 DigitalOut ReciveLed(LED2);
 DigitalOut SendLed(LED3);
 
-volatile bool IsWebLedBlinking = false;
 volatile bool IsSendLedBlinking = false;
 volatile bool IsReciveLedBlinking = false;
 
@@ -45,6 +46,38 @@ void ChangeBlinkState(volatile bool& conidion, DigitalOut &port)
     } 
     else
         port = 0;
+}
+
+// ======================================
+// Relay Controll logic
+
+InterruptIn button1(BUTTON1);
+volatile bool button1_pressed = false; // Used in the main loop
+volatile bool button1_enabled = true; // Used for debouncing
+Timeout button1_timeout; // Used for debouncing
+
+// Enables button when bouncing is over
+void button1_enabled_cb(void)
+{
+    button1_enabled = true;
+}
+
+// ISR handling button pressed event
+void button1_onpressed_cb(void)
+{
+    if (button1_enabled) { // Disabled while the button is bouncing
+        button1_enabled = false;
+        button1_pressed = true; // To be read by the main loop
+        button1_timeout.attach(callback(button1_enabled_cb), 0.3); // Debounce time 300 ms
+    }
+}
+
+
+void ChangeRelayState()
+{
+  auto newValue = !RelayLed;
+  RelayLed = newValue;
+  RelayConnector = newValue;
 }
 
 // ======================================
@@ -118,8 +151,6 @@ void ListenServerConnections()
         client = ReciveSocket.accept();
         if (client) 
         {
-            IsWebLedBlinking = true;
-
             client->getpeername(&addr);
             client->recv(httpBuf, 1500);
 
@@ -216,6 +247,7 @@ Thread listenTrd;
 
 int main(void)
 {
+    printf("I'm Alive!");
     net = new EthernetInterface();
     net->connect();
     
@@ -242,15 +274,24 @@ int main(void)
     net->get_gateway(&addr);
     printf("Gateway: %s\n", addr.get_ip_address() ? addr.get_ip_address() : "None");
 
+    
+    button1.fall(callback(button1_onpressed_cb));
+
+
     listenTrd.start(callback(ListenServerConnections));
     reciveTrd.start(callback(ReciveDataFromRsThread));
     sendTrd.start(callback(SendInfoToEthernetThread));
 
     while (true) 
     {
-        ChangeBlinkState(IsWebLedBlinking, WebLed);
         ChangeBlinkState(IsSendLedBlinking, SendLed);
         ChangeBlinkState(IsReciveLedBlinking, ReciveLed);
+
+        if (button1_pressed) 
+        {
+            button1_pressed = false;
+            ChangeRelayState();
+        }
 
         ThisThread::sleep_for(MAIN_LOOP_RATE);
     }
