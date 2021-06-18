@@ -24,7 +24,7 @@
 BufferedSerial RsConnector(PD_5, PD_6, 9600);
 const auto bufferSize = sizeof(InputResult);
 
-AnalogOut RelayConnector(PC_0);
+AnalogOut RelayConnector(PA_5);
 
 
 // =====================================
