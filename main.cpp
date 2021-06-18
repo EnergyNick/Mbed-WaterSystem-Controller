@@ -28,11 +28,11 @@ const auto bufferSize = sizeof(InputResult);
 // =====================================
 // Leds Logic
 
-DigitalOut MainLed(LED1);
+DigitalOut WebLed(LED1);
 DigitalOut ReciveLed(LED2);
 DigitalOut SendLed(LED3);
 
-volatile bool IsMainLedBlinking = false;
+volatile bool IsWebLedBlinking = false;
 volatile bool IsSendLedBlinking = false;
 volatile bool IsReciveLedBlinking = false;
 
@@ -103,6 +103,41 @@ void SendDataToServer(SensorData *data)
     auto request = MakeDataRequest(*data);
     auto sendBuffer = request.c_str();
     SendSocket.send(sendBuffer, request.size());
+}
+
+void ListenServerConnections()
+{
+    SocketAddress addr;
+
+    ReciveSocket.open(net);
+    ReciveSocket.bind(PORT);
+    ReciveSocket.listen();
+
+    while (true) 
+    {
+        client = ReciveSocket.accept();
+        if (client) 
+        {
+            IsWebLedBlinking = true;
+
+            client->getpeername(&addr);
+            client->recv(httpBuf, 1500);
+
+            int result = ParseUrl(httpBuf);
+            if (result) 
+            {
+                auto message = "HTTP/1.1 200 OK";
+                SendSocket.send(message, strlen(message));
+            } 
+            else 
+            {
+                auto badMessage = "HTTP/1.1 403 BadRequest";
+                SendSocket.send(badMessage, strlen(badMessage));
+            }
+
+            client->close();
+        }
+    }
 }
 
 
@@ -177,6 +212,7 @@ void ReciveDataFromRsThread()
 
 Thread reciveTrd;
 Thread sendTrd;
+Thread listenTrd;
 
 int main(void)
 {
@@ -206,16 +242,16 @@ int main(void)
     net->get_gateway(&addr);
     printf("Gateway: %s\n", addr.get_ip_address() ? addr.get_ip_address() : "None");
 
+    listenTrd.start(callback(ListenServerConnections));
     reciveTrd.start(callback(ReciveDataFromRsThread));
     sendTrd.start(callback(SendInfoToEthernetThread));
 
     while (true) 
     {
-        ChangeBlinkState(IsMainLedBlinking, MainLed);
+        ChangeBlinkState(IsWebLedBlinking, WebLed);
         ChangeBlinkState(IsSendLedBlinking, SendLed);
         ChangeBlinkState(IsReciveLedBlinking, ReciveLed);
 
-        IsMainLedBlinking = true;
         ThisThread::sleep_for(MAIN_LOOP_RATE);
     }
 
