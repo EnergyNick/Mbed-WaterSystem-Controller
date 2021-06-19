@@ -7,6 +7,7 @@
 #include "InputResult.h"
 #include "TCPSocket.h"
 #include "EthernetInterface.h"
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -56,35 +57,33 @@ volatile bool button1_pressed = false; // Used in the main loop
 volatile bool button1_enabled = true; // Used for debouncing
 Timeout button1_timeout; // Used for debouncing
 
-// Enables button when bouncing is over
 void button1_enabled_cb(void)
 {
     button1_enabled = true;
 }
 
-// ISR handling button pressed event
 void button1_onpressed_cb(void)
 {
-    if (button1_enabled) { // Disabled while the button is bouncing
+    if (button1_enabled) 
+    { 
         button1_enabled = false;
-        button1_pressed = true; // To be read by the main loop
-        button1_timeout.attach(callback(button1_enabled_cb), 0.3); // Debounce time 300 ms
+        button1_pressed = true; 
+        button1_timeout.attach(callback(button1_enabled_cb), 300ms); 
     }
 }
 
-
 void ChangeRelayState()
 {
-  auto newValue = !RelayLed;
-  RelayLed = newValue;
-  RelayConnector = newValue;
+    auto newValue = !RelayLed;
+    RelayLed = newValue;
+    RelayConnector = newValue;
 }
 
 // ======================================
 // Ethernet Logic
 
-#define HOST_IP			"192.168.50.34"
-#define HOST_PORT		5050
+#define HOST_IP			"192.168.0.10"
+#define HOST_PORT		80
 #define PORT            80
 
 
@@ -104,7 +103,7 @@ int8_t ParseUrl(char *url)
     if (strncmp(httpBuf, "POST", 4) != 0)
         return -1;
 
-    char *cmd = ((url + 4 + 1 + 1)); // Skip command and /
+    char *cmd = ((url + 4 + 1 + 1)); // Skip command and '/'
     if (strcmp(cmd, "/setup?gate=0") == 0)
         return (0);
 
@@ -125,8 +124,10 @@ std::string MakeDataRequest(SensorData data)
         ",  \"AirDewpointFast\": " + std::to_string(data.AirDewpointFast) + " }";
 
     auto str = std::string("POST /api/info/receive HTTP/1.1\r\n") +
+                "Host: " + HOST_IP + "\r\n"
+                "Content-Type: application/json\r\n" + 
                 "Content-Length: " + std::to_string(content.size()) +
-                "\r\nContent-Type: application/json\r\n\r\n" + content;
+                "\r\n\r\n"+ content;
 
     return str;
 }
@@ -247,11 +248,11 @@ Thread listenTrd;
 
 int main(void)
 {
-    printf("I'm Alive!");
+    printf("I'm Alive!\n");
     net = new EthernetInterface();
+    net->set_network("192.168.0.5","255.255.255.0","192.168.0.80"); 
     net->connect();
     
-    // Open a TCP socket
     nsapi_error_t rt = SendSocket.open(net);
     if (rt != NSAPI_ERROR_OK) 
     {
@@ -262,7 +263,8 @@ int main(void)
     SendSocket.set_timeout(200);
     SendSocket.set_blocking(false);
     rt = SendSocket.connect(HostAddress);
-    if (rt != NSAPI_ERROR_OK) {
+    if (rt != NSAPI_ERROR_OK) 
+    {
         printf("Could not connect TCP socket (%d)\r\n", rt);
     }
 
